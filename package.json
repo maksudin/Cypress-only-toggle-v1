@@ -1,0 +1,26 @@
+{
+  "name": "cypress-only-toggle",
+  "displayName": "Cypress Only Toggle",
+  "description": "Adds a CodeLens to toggle it.only and copy relative path.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.84.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:typescript",
+    "onLanguage:javascript"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "cypress.toggleOnlyAndCopyPath",
+        "title": "Cypress: toggle it.only and copy path"
+      }
+    ]
+  }
+}
