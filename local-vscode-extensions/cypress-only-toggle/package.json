@@ -28,6 +28,10 @@
       {
         "command": "cypress.toggleOnlyAndRunHeadless",
         "title": "Cypress: toggle it.only and run spec (headless)"
+      },
+      {
+        "command": "cypress.toggleSkip",
+        "title": "Cypress: toggle test disable (xit/xdescribe)"
       }
     ]
   }

@@ -4,6 +4,7 @@ const vscode = require('vscode');
 const COMMAND_ID = 'cypress.toggleOnlyAndCopyPath';
 const COMMAND_HIDE_ID = 'cypress.toggleHideApiLogs';
 const COMMAND_RUN_HEADLESS_ID = 'cypress.toggleOnlyAndRunHeadless';
+const COMMAND_SKIP_ID = 'cypress.toggleSkip';
 
 const HIDE_API_BLOCK = [
   'before(() => {',
@@ -26,8 +27,8 @@ function activate(context) {
 
       const codeLenses = [];
       const text = document.getText();
-      const itRegex = /\bit(\.only)?\s*\(/g;
-      const describeRegex = /\bdescribe(\.only)?\s*\(/g;
+      const itRegex = /\b(?:it|xit)(\.only)?\s*\(/g;
+      const describeRegex = /\b(?:describe|xdescribe)(\.only)?\s*\(/g;
       let match;
 
       while ((match = itRegex.exec(text))) {
@@ -36,7 +37,7 @@ function activate(context) {
 
         codeLenses.push(
           new vscode.CodeLens(range, {
-            title: '★ ONLY',
+            title: '⭐ ONLY',
             command: COMMAND_ID,
             arguments: [document.uri, position.line]
           })
@@ -44,8 +45,16 @@ function activate(context) {
 
         codeLenses.push(
           new vscode.CodeLens(range, {
-            title: '▶ RUN HL',
+            title: '▶️ RUN HL',
             command: COMMAND_RUN_HEADLESS_ID,
+            arguments: [document.uri, position.line]
+          })
+        );
+
+        codeLenses.push(
+          new vscode.CodeLens(range, {
+            title: '🛑 OFF',
+            command: COMMAND_SKIP_ID,
             arguments: [document.uri, position.line]
           })
         );
@@ -57,7 +66,7 @@ function activate(context) {
 
         codeLenses.push(
           new vscode.CodeLens(range, {
-            title: '★ ONLY',
+            title: '⭐ ONLY',
             command: COMMAND_ID,
             arguments: [document.uri, position.line]
           })
@@ -65,7 +74,7 @@ function activate(context) {
 
         codeLenses.push(
           new vscode.CodeLens(range, {
-            title: '▶ RUN HL',
+            title: '▶️ RUN HL',
             command: COMMAND_RUN_HEADLESS_ID,
             arguments: [document.uri, position.line]
           })
@@ -73,7 +82,15 @@ function activate(context) {
 
         codeLenses.push(
           new vscode.CodeLens(range, {
-            title: '⚠ HIDE API',
+            title: '🛑 OFF',
+            command: COMMAND_SKIP_ID,
+            arguments: [document.uri, position.line]
+          })
+        );
+
+        codeLenses.push(
+          new vscode.CodeLens(range, {
+            title: '👀 HIDE API',
             command: COMMAND_HIDE_ID,
             arguments: [document.uri]
           })
@@ -95,36 +112,31 @@ function activate(context) {
     const lineText = document.lineAt(line).text;
     const itOnlyRegex = /\bit\.only\s*\(/;
     const itRegex = /\bit\s*\(/;
+    const xitRegex = /\bxit\s*\(/;
     const describeOnlyRegex = /\bdescribe\.only\s*\(/;
     const describeRegex = /\bdescribe\s*\(/;
+    const xdescribeRegex = /\bxdescribe\s*\(/;
 
     const edit = new vscode.WorkspaceEdit();
     let hasChanges = false;
     let shouldCopyPath = false;
     const isCurrentOnly = itOnlyRegex.test(lineText) || describeOnlyRegex.test(lineText);
 
-    for (let i = 0; i < document.lineCount; i += 1) {
-      const currentLineText = document.lineAt(i).text;
-      if (!itOnlyRegex.test(currentLineText) && !describeOnlyRegex.test(currentLineText)) {
-        continue;
-      }
-
-      if (i === line) {
-        continue;
-      }
-
-      const updatedLineText = currentLineText
-        .replace(/\bit\.only\s*\(/, 'it(')
-        .replace(/\bdescribe\.only\s*\(/, 'describe(');
-      edit.replace(uri, new vscode.Range(i, 0, i, currentLineText.length), updatedLineText);
-      hasChanges = true;
-    }
-
     let newLine = lineText;
     if (isCurrentOnly) {
       newLine = lineText.replace(/\bit\.only\s*\(/, 'it(').replace(/\bdescribe\.only\s*\(/, 'describe(');
       edit.replace(uri, new vscode.Range(line, 0, line, lineText.length), newLine);
       hasChanges = true;
+    } else if (xitRegex.test(lineText)) {
+      newLine = lineText.replace(/\bxit\s*\(/, 'it.only(');
+      edit.replace(uri, new vscode.Range(line, 0, line, lineText.length), newLine);
+      hasChanges = true;
+      shouldCopyPath = true;
+    } else if (xdescribeRegex.test(lineText)) {
+      newLine = lineText.replace(/\bxdescribe\s*\(/, 'describe.only(');
+      edit.replace(uri, new vscode.Range(line, 0, line, lineText.length), newLine);
+      hasChanges = true;
+      shouldCopyPath = true;
     } else if (itRegex.test(lineText)) {
       newLine = lineText.replace(/\bit\s*\(/, 'it.only(');
       edit.replace(uri, new vscode.Range(line, 0, line, lineText.length), newLine);
@@ -167,8 +179,10 @@ function activate(context) {
     const lineText = document.lineAt(line).text;
     const itOnlyRegex = /\bit\.only\s*\(/;
     const itRegex = /\bit\s*\(/;
+    const xitRegex = /\bxit\s*\(/;
     const describeOnlyRegex = /\bdescribe\.only\s*\(/;
     const describeRegex = /\bdescribe\s*\(/;
+    const xdescribeRegex = /\bxdescribe\s*\(/;
 
     const edit = new vscode.WorkspaceEdit();
     let hasChanges = false;
@@ -190,7 +204,15 @@ function activate(context) {
       hasChanges = true;
     }
 
-    if (itRegex.test(lineText) && !itOnlyRegex.test(lineText)) {
+    if (xitRegex.test(lineText)) {
+      const newLine = lineText.replace(/\bxit\s*\(/, 'it.only(');
+      edit.replace(uri, new vscode.Range(line, 0, line, lineText.length), newLine);
+      hasChanges = true;
+    } else if (xdescribeRegex.test(lineText)) {
+      const newLine = lineText.replace(/\bxdescribe\s*\(/, 'describe.only(');
+      edit.replace(uri, new vscode.Range(line, 0, line, lineText.length), newLine);
+      hasChanges = true;
+    } else if (itRegex.test(lineText) && !itOnlyRegex.test(lineText)) {
       const newLine = lineText.replace(/\bit\s*\(/, 'it.only(');
       edit.replace(uri, new vscode.Range(line, 0, line, lineText.length), newLine);
       hasChanges = true;
@@ -217,6 +239,47 @@ function activate(context) {
     }
 
     return null;
+  };
+
+  const toggleSkip = async (uri, line) => {
+    const document = await vscode.workspace.openTextDocument(uri);
+    const editor = await vscode.window.showTextDocument(document);
+
+    const lineText = document.lineAt(line).text;
+    const xitRegex = /\bxit\s*\(/;
+    const xdescribeRegex = /\bxdescribe\s*\(/;
+    const itRegex = /\bit(\.only)?\s*\(/;
+    const describeRegex = /\bdescribe(\.only)?\s*\(/;
+
+    const edit = new vscode.WorkspaceEdit();
+    let hasChanges = false;
+
+    if (xitRegex.test(lineText)) {
+      const newLine = lineText.replace(/\bxit\s*\(/, 'it(');
+      edit.replace(uri, new vscode.Range(line, 0, line, lineText.length), newLine);
+      hasChanges = true;
+    } else if (xdescribeRegex.test(lineText)) {
+      const newLine = lineText.replace(/\bxdescribe\s*\(/, 'describe(');
+      edit.replace(uri, new vscode.Range(line, 0, line, lineText.length), newLine);
+      hasChanges = true;
+    } else if (describeRegex.test(lineText)) {
+      const newLine = lineText.replace(/\bdescribe(\.only)?\s*\(/, 'xdescribe(');
+      edit.replace(uri, new vscode.Range(line, 0, line, lineText.length), newLine);
+      hasChanges = true;
+    } else if (itRegex.test(lineText)) {
+      const newLine = lineText.replace(/\bit(\.only)?\s*\(/, 'xit(');
+      edit.replace(uri, new vscode.Range(line, 0, line, lineText.length), newLine);
+      hasChanges = true;
+    }
+
+    if (hasChanges) {
+      await vscode.workspace.applyEdit(edit);
+      await document.save();
+    }
+
+    if (editor) {
+      editor.selection = new vscode.Selection(new vscode.Position(line, 0), new vscode.Position(line, 0));
+    }
   };
 
   context.subscriptions.push(
@@ -251,6 +314,12 @@ function activate(context) {
 
       terminal.show();
       terminal.sendText(command, true);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(COMMAND_SKIP_ID, async (uri, line) => {
+      await toggleSkip(uri, line);
     })
   );
 
