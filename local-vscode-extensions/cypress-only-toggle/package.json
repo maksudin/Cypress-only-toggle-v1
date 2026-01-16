@@ -1,7 +1,7 @@
 {
   "name": "cypress-only-toggle",
   "displayName": "Cypress Only Toggle",
-  "description": "Adds a CodeLens to toggle it.only and copy relative path.",
+  "description": "Adds CodeLens actions for Cypress tests.",
   "version": "0.0.1",
   "publisher": "local",
   "engines": {
@@ -20,6 +20,14 @@
       {
         "command": "cypress.toggleOnlyAndCopyPath",
         "title": "Cypress: toggle it.only and copy path"
+      },
+      {
+        "command": "cypress.toggleHideApiLogs",
+        "title": "Cypress: toggle hide API logs"
+      },
+      {
+        "command": "cypress.toggleOnlyAndRunHeadless",
+        "title": "Cypress: toggle it.only and run spec (headless)"
       }
     ]
   }
