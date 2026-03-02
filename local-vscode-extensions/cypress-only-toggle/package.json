@@ -32,6 +32,10 @@
       {
         "command": "cypress.toggleSkip",
         "title": "Cypress: toggle test disable (xit/xdescribe)"
+      },
+      {
+        "command": "cypress.foldCypressBlocks",
+        "title": "Cypress: fold test blocks"
       }
     ]
   }

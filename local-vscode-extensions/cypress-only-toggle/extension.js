@@ -5,6 +5,14 @@ const COMMAND_ID = 'cypress.toggleOnlyAndCopyPath';
 const COMMAND_HIDE_ID = 'cypress.toggleHideApiLogs';
 const COMMAND_RUN_HEADLESS_ID = 'cypress.toggleOnlyAndRunHeadless';
 const COMMAND_SKIP_ID = 'cypress.toggleSkip';
+const COMMAND_FOLD_ID = 'cypress.foldCypressBlocks';
+
+/** @type {Map<string, 'folded'|'unfolded'>} Состояние сворачивания по ключу uri#line */
+const foldingStateByBlock = new Map();
+
+function getFoldingStateKey(uri, line) {
+  return `${uri.toString()}#${line}`;
+}
 
 const HIDE_API_BLOCK = [
   'before(() => {',
@@ -18,8 +26,56 @@ const HIDE_API_BLOCK = [
   '});'
 ].join('\n');
 
+function findMatchingBrace(text, openIndex) {
+  let depth = 0;
+  for (let i = openIndex; i < text.length; i += 1) {
+    if (text[i] === '{') depth += 1;
+    else if (text[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function getCypressFoldingRanges(document) {
+  const fsPath = document.uri.fsPath;
+  if (!fsPath.endsWith('.cy.ts') && !fsPath.endsWith('.cy.js')) {
+    return [];
+  }
+
+  const text = document.getText();
+  const ranges = [];
+  const blockRegex = /\b(before|beforeEach|after|afterEach|it|xit|describe|xdescribe)(\.only)?\s*\(/g;
+  let match;
+
+  while ((match = blockRegex.exec(text))) {
+    const arrowBraceRegex = /=>\s*(?:async\s*)?\{/g;
+    arrowBraceRegex.lastIndex = match.index;
+    const arrowMatch = arrowBraceRegex.exec(text);
+    if (!arrowMatch) continue;
+
+    const openBraceIndex = arrowMatch.index + arrowMatch[0].indexOf('{');
+    const closeBraceIndex = findMatchingBrace(text, openBraceIndex);
+    if (closeBraceIndex === -1) continue;
+
+    const startPosition = document.positionAt(match.index);
+    const endPosition = document.positionAt(closeBraceIndex);
+    const startLine = startPosition.line;
+    const endLine = endPosition.line;
+
+    if (startLine < endLine) {
+      ranges.push(new vscode.FoldingRange(startLine, endLine));
+    }
+  }
+
+  return ranges;
+}
+
 function activate(context) {
+  const codeLensChangeEmitter = new vscode.EventEmitter();
   const provider = {
+    onDidChangeCodeLenses: codeLensChangeEmitter.event,
     provideCodeLenses(document) {
       if (!document.uri.fsPath.endsWith('.cy.ts') && !document.uri.fsPath.endsWith('.cy.js')) {
         return [];
@@ -64,6 +120,16 @@ function activate(context) {
         const position = document.positionAt(match.index);
         const range = new vscode.Range(position, position);
 
+        const stateKey = getFoldingStateKey(document.uri, position.line);
+        const isFolded = foldingStateByBlock.get(stateKey) === 'folded';
+        codeLenses.push(
+          new vscode.CodeLens(range, {
+            title: isFolded ? '➕' : '➖',
+            command: COMMAND_FOLD_ID,
+            arguments: [document.uri, position.line]
+          })
+        );
+
         codeLenses.push(
           new vscode.CodeLens(range, {
             title: '⭐ ONLY',
@@ -103,6 +169,18 @@ function activate(context) {
 
   context.subscriptions.push(
     vscode.languages.registerCodeLensProvider([{ language: 'typescript' }, { language: 'javascript' }], provider)
+  );
+
+  const foldingProvider = {
+    provideFoldingRanges(document) {
+      return getCypressFoldingRanges(document);
+    }
+  };
+  context.subscriptions.push(
+    vscode.languages.registerFoldingRangeProvider(
+      [{ language: 'typescript' }, { language: 'javascript' }],
+      foldingProvider
+    )
   );
 
   const toggleOnly = async (uri, line) => {
@@ -387,6 +465,44 @@ function activate(context) {
       if (editor) {
         editor.selection = new vscode.Selection(new vscode.Position(insertLine, 0), new vscode.Position(insertLine, 0));
       }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(COMMAND_FOLD_ID, async (uri, clickedLine) => {
+      const document = await vscode.workspace.openTextDocument(uri);
+      const editor = await vscode.window.showTextDocument(document);
+      const fsPath = editor.document.uri.fsPath;
+      if (!fsPath.endsWith('.cy.ts') && !fsPath.endsWith('.cy.js')) {
+        return;
+      }
+      const ranges = getCypressFoldingRanges(editor.document);
+      const parentRange = ranges.find((r) => r.start === clickedLine);
+      if (!parentRange) return;
+      const allInner = ranges.filter((r) => r.start > parentRange.start && r.end < parentRange.end);
+      const directChildren = allInner.filter(
+        (r) => !allInner.some((s) => s !== r && s.start < r.start && r.end < s.end)
+      );
+      if (directChildren.length === 0) return;
+      const selectionLines = directChildren.map((r) => r.start);
+      const stateKey = getFoldingStateKey(uri, clickedLine);
+      const isFolded = foldingStateByBlock.get(stateKey) === 'folded';
+      const visibleRanges = editor.visibleRanges;
+      const rangeToRestore = visibleRanges.length > 0 ? visibleRanges[0] : null;
+      if (isFolded) {
+        await vscode.commands.executeCommand('editor.unfold', { selectionLines });
+        foldingStateByBlock.set(stateKey, 'unfolded');
+      } else {
+        await vscode.commands.executeCommand('editor.fold', { selectionLines });
+        foldingStateByBlock.set(stateKey, 'folded');
+      }
+      if (rangeToRestore) {
+        const activeEditor = vscode.window.activeTextEditor;
+        if (activeEditor && activeEditor.document.uri.toString() === uri.toString()) {
+          activeEditor.revealRange(rangeToRestore, vscode.TextEditorRevealType.Default);
+        }
+      }
+      codeLensChangeEmitter.fire();
     })
   );
 }
